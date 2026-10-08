@@ -7,7 +7,9 @@ import matplotlib.pyplot as plt
 
 
 EX05 = Path(__file__).resolve().parent
-SPLIT = EX05.parent / "subject" / "split"
+
+# K elegido después de probar con Validation_knight.csv
+K = 5
 
 
 # Calcula la distancia entre dos knights
@@ -65,15 +67,11 @@ def main():
         print("Usage: python3 KNN.py Training_knight.csv Test_knight.csv")
         return
 
-    # Archivo para aprender
+    # Primer argumento -> datos para aprender
     train = pd.read_csv(sys.argv[1])
 
-    # Archivo final que queremos predecir
+    # Segundo argumento -> datos que queremos comprobar o predecir
     test = pd.read_csv(sys.argv[2])
-
-    # Validation completo, con knight,
-    # para probar distintos valores de K
-    validation = pd.read_csv(SPLIT / "Validation_knight.csv")
 
     # --------------------------------------------------
     # CARACTERÍSTICAS
@@ -94,127 +92,148 @@ def main():
     y_train = []
 
     for knight in train["knight"]:
+
         if knight == "Jedi":
             y_train.append(0)
+
         else:
             y_train.append(1)
 
     y_train = np.array(y_train)
 
     # --------------------------------------------------
-    # VALIDATION
-    # --------------------------------------------------
-
-    X_validation = validation[features].values
-
-    y_validation = []
-
-    for knight in validation["knight"]:
-        if knight == "Jedi":
-            y_validation.append(0)
-        else:
-            y_validation.append(1)
-
-    y_validation = np.array(y_validation)
-
-    # --------------------------------------------------
     # NORMALIZACIÓN
     # --------------------------------------------------
-    # KNN usa distancias, así que necesitamos
-    # que todas las columnas estén en escalas parecidas.
+    # KNN trabaja con distancias.
+    # Normalizamos para que todas las columnas tengan
+    # una escala parecida.
 
     mean = np.mean(X_train, axis=0)
     std = np.std(X_train, axis=0)
 
+    # Evitamos dividir entre 0
     std[std == 0] = 1
 
     X_train = (X_train - mean) / std
-    X_validation = (X_validation - mean) / std
 
     # --------------------------------------------------
-    # BUSCAMOS EL MEJOR K
+    # SI EL SEGUNDO CSV TIENE "knight"
+    # ESTAMOS USANDO VALIDATION_KNIGHT.CSV
     # --------------------------------------------------
 
-    k_values = []
-    accuracies = []
+    if "knight" in test.columns:
 
-    best_k = 1
-    best_accuracy = 0
+        X_validation = test[features].values
 
-    # Probamos K impares para evitar empates
-    for k in range(1, 30, 2):
+        y_validation = []
 
-        predictions = []
+        for knight in test["knight"]:
 
-        for row in X_validation:
-            result = predict_knn(
-                X_train,
-                y_train,
-                row,
-                k
+            if knight == "Jedi":
+                y_validation.append(0)
+
+            else:
+                y_validation.append(1)
+
+        y_validation = np.array(y_validation)
+
+        # Normalizamos Validation usando SIEMPRE
+        # la media y desviación del Training
+        X_validation = (
+            X_validation - mean
+        ) / std
+
+        k_values = []
+        accuracies = []
+
+        best_k = 1
+        best_accuracy = 0
+
+        # Probamos diferentes valores de K
+        for k in range(1, 30, 2):
+
+            predictions = []
+
+            for row in X_validation:
+
+                result = predict_knn(
+                    X_train,
+                    y_train,
+                    row,
+                    k
+                )
+
+                predictions.append(result)
+
+            current_accuracy = accuracy(
+                y_validation,
+                predictions
             )
 
-            predictions.append(result)
+            k_values.append(k)
+            accuracies.append(
+                current_accuracy * 100
+            )
 
-        current_accuracy = accuracy(
-            y_validation,
-            predictions
-        )
+            print(
+                f"K = {k:2d} -> "
+                f"Accuracy = {current_accuracy * 100:.2f}%"
+            )
 
-        k_values.append(k)
-        accuracies.append(current_accuracy * 100)
+            if current_accuracy > best_accuracy:
+                best_accuracy = current_accuracy
+                best_k = k
 
+        print()
+        print("Best K:", best_k)
         print(
-            f"K = {k:2d} -> "
-            f"Accuracy = {current_accuracy * 100:.2f}%"
+            f"Best accuracy: "
+            f"{best_accuracy * 100:.2f}%"
         )
 
-        if current_accuracy > best_accuracy:
-            best_accuracy = current_accuracy
-            best_k = k
+        # Gráfico de K
+        plt.plot(
+            k_values,
+            accuracies,
+            marker="o"
+        )
 
-    print()
-    print("Best K:", best_k)
-    print(f"Best accuracy: {best_accuracy * 100:.2f}%")
+        plt.xlabel("K value")
+        plt.ylabel("Accuracy (%)")
+        plt.title("KNN Validation Accuracy")
+        plt.grid()
 
-    # --------------------------------------------------
-    # GRÁFICO
-    # --------------------------------------------------
+        plt.savefig(EX05 / "KNN.png")
+        plt.show()
 
-    plt.plot(
-        k_values,
-        accuracies,
-        marker="o"
-    )
-
-    plt.xlabel("K value")
-    plt.ylabel("Accuracy (%)")
-    plt.title("KNN Validation Accuracy")
-    plt.grid()
-
-    plt.savefig(EX05 / "KNN.png")
+        return
 
     # --------------------------------------------------
-    # PREDECIMOS EL SEGUNDO ARGUMENTO
+    # SI EL SEGUNDO CSV NO TIENE "knight"
+    # HACEMOS LAS PREDICCIONES
     # --------------------------------------------------
 
     X_test = test[features].values
 
-    # Normalizamos con la media y desviación del Training
-    X_test = (X_test - mean) / std
+    # Normalizamos con los datos del Training
+    X_test = (
+        X_test - mean
+    ) / std
 
     predictions = []
 
     for row in X_test:
+
         result = predict_knn(
             X_train,
             y_train,
             row,
-            best_k
+            K
         )
 
         if result == 0:
             predictions.append("Jedi")
+
         else:
             predictions.append("Sith")
 
@@ -223,10 +242,9 @@ def main():
     # --------------------------------------------------
 
     with open(EX05 / "KNN.txt", "w") as file:
+
         for prediction in predictions:
             file.write(prediction + "\n")
-
-    plt.show()
 
 
 if __name__ == "__main__":
